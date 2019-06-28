@@ -20,6 +20,7 @@ PUBLIC_HEADERS += \
     qmodbusclient.h \
     qmodbusreply.h \
     qmodbustcpclient.h \
+    qmodbustcprtuclient.h \
     qmodbustcpserver.h \
     qmodbuspdu.h \
     qmodbusdeviceidentification.h
@@ -31,6 +32,7 @@ PRIVATE_HEADERS += \
     qmodbusclient_p.h \
     qmodbusdevice_p.h \
     qmodbustcpclient_p.h \
+    qmodbustcprtuclient_p.h \
     qmodbustcpserver_p.h \
     qmodbus_symbols_p.h \
     qmodbuscommevent_p.h \
@@ -48,6 +50,7 @@ SOURCES += \
     qmodbusclient.cpp \
     qmodbusreply.cpp \
     qmodbustcpclient.cpp \
+    qmodbustcprtuclient.cpp \
     qmodbustcpserver.cpp \
     qmodbuspdu.cpp \
     qmodbusdeviceidentification.cpp
