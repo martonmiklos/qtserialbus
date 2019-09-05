@@ -70,6 +70,30 @@ QModbusTcpClient::~QModbusTcpClient()
 }
 
 /*!
+    Returns \c true if Modbus RTU messages encapsulation over TCP messages is
+    set; \c false otherwise.
+*/
+bool QModbusTcpClient::isRtuEncapsulationEnabled() const
+{
+    return d_func()->encapsulateRtu;
+}
+
+/*!
+    Enables or disables support for encapsulated Modbus RTU message over TCP.
+    Returns \c true if the setting was successfully applied; \c false otherwise.
+
+    \note If for example the client is in connected state, the new setting will
+    not be applied.
+*/
+bool QModbusTcpClient::enableRtuEncapsulation(bool value)
+{
+    bool setable = (state() == State::UnconnectedState);
+    if (setable)
+        d_func()->encapsulateRtu = value;
+    return setable;
+}
+
+/*!
     \internal
 */
 QModbusTcpClient::QModbusTcpClient(QModbusTcpClientPrivate &dd, QObject *parent)

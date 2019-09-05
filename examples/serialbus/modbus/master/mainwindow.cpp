@@ -175,7 +175,9 @@ void MainWindow::onConnectTypeChanged(int index)
         modbusDevice = new QModbusRtuSerialMaster(this);
 #endif
     } else if (type == Tcp) {
-        modbusDevice = new QModbusTcpClient(this);
+        auto device = new QModbusTcpClient(this);
+        device->enableRtuEncapsulation(true);
+        modbusDevice = device;
         if (ui->portEdit->text().isEmpty())
             ui->portEdit->setText(QLatin1String("127.0.0.1:502"));
     }

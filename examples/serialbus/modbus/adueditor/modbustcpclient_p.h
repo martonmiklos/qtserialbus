@@ -65,9 +65,10 @@ class ModbusTcpClientPrivate : private QModbusTcpClientPrivate
     Q_DECLARE_PUBLIC(ModbusTcpClient)
 
 public:
-    QModbusReply *enqueueRequest(const QModbusRequest &request, int, const QModbusDataUnit &unit,
-                                 QModbusReply::ReplyType type) override
+    QModbusReply *enqueueRequest(const QModbusRequest &request, int serverAddress, const QModbusDataUnit &unit,
+        QModbusReply::ReplyType type) override
     {
+        //return QModbusTcpClientPrivate::enqueueRequest(request, serverAddress, unit, type);
         auto writeToSocket = [this](const QModbusRequest &request) {
             QByteArray buffer;
             QDataStream output(&buffer, QIODevice::WriteOnly);
@@ -78,7 +79,7 @@ public:
                 Q_Q(ModbusTcpClient);
                 qDebug() << "Cannot write request to socket.";
                 q->setError(QModbusTcpClient::tr("Could not write request to socket."),
-                            QModbusDevice::WriteError);
+                    QModbusDevice::WriteError);
                 return false;
             }
             qDebug() << "Sent TCP ADU:" << buffer.toHex();
@@ -91,12 +92,12 @@ public:
 
         Q_Q(ModbusTcpClient);
         auto reply = new QModbusReply(type, m_uId, q);
-        const auto element = QueueElement{reply, request, unit, m_numberOfRetries,
-            m_responseTimeoutDuration};
+        const auto element = QueueElement { reply, request, unit, m_numberOfRetries,
+            m_responseTimeoutDuration };
         m_transactionStore.insert(m_tId, element);
 
         q->connect(q, &QModbusClient::timeoutChanged,
-                   element.timer.data(), QOverload<int>::of(&QTimer::setInterval));
+            element.timer.data(), QOverload<int>::of(&QTimer::setInterval));
         QObject::connect(element.timer.data(), &QTimer::timeout, q, [this, writeToSocket]() {
             if (!m_transactionStore.contains(m_tId))
                 return;
@@ -122,6 +123,7 @@ public:
         return reply;
     }
 
+private:
     quint16 m_tId = 0;
     quint16 m_pId = 0;
     quint16 m_length = 0;

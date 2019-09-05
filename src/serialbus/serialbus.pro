@@ -38,7 +38,7 @@ PRIVATE_HEADERS += \
     qmodbuscommevent_p.h \
     qmodbusadu_p.h \
 
-SOURCES += \
+PUBLIC_SOURCES += \
     qcanbusdevice.cpp \
     qcanbusdeviceinfo.cpp \
     qcanbus.cpp \
@@ -54,6 +54,8 @@ SOURCES += \
     qmodbustcpserver.cpp \
     qmodbuspdu.cpp \
     qmodbusdeviceidentification.cpp
+
+PRIVATE_SOURCES += qmodbustcpclient_p.cpp
 
 qtConfig(modbus-serialport) {
     QT_FOR_PRIVATE += serialport
@@ -71,6 +73,7 @@ qtConfig(modbus-serialport) {
         qmodbusrtuserialslave.cpp
 }
 HEADERS += $$PUBLIC_HEADERS $$PRIVATE_HEADERS
+SOURCES += $$PUBLIC_SOURCES $$PRIVATE_SOURCES
 
 MODULE_PLUGIN_TYPES = \
     canbus

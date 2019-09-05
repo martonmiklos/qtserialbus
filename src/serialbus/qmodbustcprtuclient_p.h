@@ -44,6 +44,7 @@
 
 #include <private/qmodbusadu_p.h>
 #include <private/qmodbusclient_p.h>
+#include <private/qmodbus_symbols_p.h>
 
 //
 //  W A R N I N G
@@ -66,102 +67,94 @@ class QModbusTcpRtuClientPrivate : public QModbusClientPrivate
     Q_DECLARE_PUBLIC(QModbusTcpRtuClient)
 
 public:
+    bool canMatchRequestAndResponse(const QModbusResponse &response, int sendingServer) const
+    {
+        if (m_element.reply.isNull())
+            return false;   // reply deleted
+        if (m_element.reply->serverAddress() != sendingServer)
+            return false;   // server mismatch
+        if (m_element.requestPdu.functionCode() != response.functionCode())
+            return false;   // request for different function code
+        return true;
+    }
+
     void setupTcpSocket()
     {
         Q_Q(QModbusTcpRtuClient);
 
         m_socket = new QTcpSocket(q);
 
-        QObject::connect(m_socket, &QAbstractSocket::connected, [this]() {
-            qCDebug(QT_MODBUS) << "(TCP/RTU client) Connected to" << m_socket->peerAddress()
-                               << "on port" << m_socket->peerPort();
-            Q_Q(QModbusTcpRtuClient);
-            q->setState(QModbusDevice::ConnectedState);
-        });
-
-        QObject::connect(m_socket, &QAbstractSocket::disconnected, [this]() {
-           qCDebug(QT_MODBUS)  << "(TCP/RTU client) Connection closed.";
-           Q_Q(QModbusTcpRtuClient);
-           q->setState(QModbusDevice::UnconnectedState);
-           cleanupQueue();
-        });
 
         m_wordTimer.setInterval(m_responseTimeoutDuration / 4);
-        QObject::connect(&m_wordTimer, &QTimer::timeout, [=]() {
+        QObject::connect(&m_wordTimer, &QTimer::timeout, q, [=]() {
             if (!m_element.timer->isActive()) {
                 return;
             }
-            const QByteArray pdu = m_responseBuffer;
 
-            // clean response buffer
-            m_responseBuffer.clear();
-
-            qCDebug(QT_MODBUS) << "(TCP/RTU client) Received buffer:" << pdu.toHex();
-
-            // can we read enough for Modbus ADU header?
-            if (pdu.size() < mbpaHeaderSize) {
-                qCDebug(QT_MODBUS_LOW) << "(TCP/RTU client) Modbus ADU not complete";
+            const QModbusSerialAdu tmpAdu(QModbusSerialAdu::Rtu, m_responseBuffer);
+            int pduSizeWithoutFcode = QModbusResponse::calculateDataSize(tmpAdu.pdu());
+            if (pduSizeWithoutFcode < 0) {
+                // wait for more data
+                qCDebug(QT_MODBUS) << "(TCP/RTU client) Cannot calculate PDU size for function code:"
+                    << tmpAdu.pdu().functionCode() << ", delaying pending frame";
                 return;
+            }
+
+            // server address byte + function code byte + PDU size + 2 bytes CRC
+            int aduSize = 2 + pduSizeWithoutFcode + 2;
+            if (tmpAdu.rawSize() < aduSize) {
+                qCDebug(QT_MODBUS) << "(TCP/RTU client) Incomplete ADU received, ignoring";
+                return;
+            }
+
+            // Special case for Diagnostics:ReturnQueryData. The response has no
+            // length indicator and is just a simple echo of what we have send.
+            if (tmpAdu.pdu().functionCode() == QModbusPdu::Diagnostics) {
+                const QModbusResponse response = tmpAdu.pdu();
+                if (canMatchRequestAndResponse(response, tmpAdu.serverAddress())) {
+                    quint16 subCode = 0xffff;
+                    response.decodeData(&subCode);
+                    if (subCode == Diagnostics::ReturnQueryData) {
+                        if (response.data() != m_element.requestPdu.data())
+                            return; // echo does not match request yet
+                        aduSize = 2 + response.dataSize() + 2;
+                        if (tmpAdu.rawSize() < aduSize)
+                            return; // echo matches, probably checksum missing
+                    }
+                }
             }
 
             // stop the timer as soon as we know
             m_element.timer->stop();
 
-            quint8 serverAddress;
-            QDataStream input(pdu);
-            input >> serverAddress;
+            const QModbusSerialAdu adu(QModbusSerialAdu::Rtu, m_responseBuffer.left(aduSize));
+            m_responseBuffer.remove(0, aduSize);
 
-            qCDebug(QT_MODBUS) << "(TCP/RTU client) Received:"
-                               << "size:" << pdu.size()
-                               << "server address:" << serverAddress;
+            qCDebug(QT_MODBUS) << "(RTU client) Received ADU:" << adu.rawData().toHex();
+            if (QT_MODBUS().isDebugEnabled() && !m_responseBuffer.isEmpty())
+                qCDebug(QT_MODBUS_LOW) << "(RTU client) Pending buffer:" << m_responseBuffer.toHex();
 
-            QModbusResponse responsePdu(
-                    QModbusPdu::FunctionCode(pdu.at(1)), pdu.mid(2));
-            qCDebug(QT_MODBUS) << "(TCP/RTU client) Received PDU:"
-                               << hex
-                               << responsePdu.functionCode()
-                               << responsePdu.data().toHex();
-
-            if (!pdu.isEmpty()) {
-                // Check CRC
-                QByteArray data = pdu.left(pdu.size() - 2);
-                quint16 expectedCrc = QModbusSerialAdu::calculateCRC(data, data.size());
-                quint16 actualCrc = quint16(quint8(pdu.at(pdu.size() - 2)) << 8 | quint8(pdu.at(pdu.size() - 1)));
-
-                if (expectedCrc != actualCrc) {
-                    cleanupQueue();
-                    qCDebug(QT_MODBUS_LOW) << "(TCP/RTU client) Modbus ADU have bad CRC"
-                                           << hex << expectedCrc
-                                           << hex << actualCrc;
-                    return;
-                }
-
-                if (m_element.reply.isNull()) {
-                    qCDebug(QT_MODBUS) << "(TCP/RTU client) No pending request for response with "
-                                          "given transaction ID, ignoring response message.";
-                } else {
-                    processQueueElement(responsePdu, m_element);
-                }
-            }
-
-        });
-
-
-        using TypeId = void (QAbstractSocket::*)(QAbstractSocket::SocketError);
-        QObject::connect(m_socket, static_cast<TypeId>(&QAbstractSocket::error),
-                         [this](QAbstractSocket::SocketError /*error*/)
-        {
-            Q_Q(QModbusTcpRtuClient);
-
-            if (m_socket->state() == QAbstractSocket::UnconnectedState) {
+            // check CRC
+            if (!adu.matchingChecksum()) {
                 cleanupQueue();
-                q->setState(QModbusDevice::UnconnectedState);
+                qCWarning(QT_MODBUS) << "(RTU client) Discarding response with wrong CRC, received:"
+                    << adu.checksum<quint16>() << ", calculated CRC:"
+                    << QModbusSerialAdu::calculateCRC(adu.data(), adu.size());
+                return;
             }
-            q->setError(QModbusClient::tr("TCP/RTU socket error (%1).").arg(m_socket->errorString()),
-                        QModbusDevice::ConnectionError);
+
+            const QModbusResponse response = adu.pdu();
+            if (!canMatchRequestAndResponse(response, adu.serverAddress())) {
+                cleanupQueue();
+                qCWarning(QT_MODBUS) << "(RTU client) Cannot match response with open request, "
+                    "ignoring";
+                return;
+            }
+
+            processQueueElement(response, m_element);
         });
 
-        QObject::connect(m_socket, &QIODevice::readyRead, [this](){
+        QObject::connect(m_socket, &QIODevice::readyRead, q, [this](){
             QByteArray data = m_socket->read(m_socket->bytesAvailable());
             qCDebug(QT_MODBUS_LOW) << "(TCP/RTU client) Response buffer:" << data.toHex();
             m_responseBuffer += data;
@@ -207,14 +200,13 @@ public:
         });
 
         if (element.timer) {
-            using TypeId = void (QTimer::*)(int);
             q->connect(q, &QModbusClient::timeoutChanged,
                        element.timer.data(), QOverload<int>::of(&QTimer::setInterval));
             q->connect(q, &QModbusClient::timeoutChanged,
                 &m_wordTimer, [=](int newTimeout) {
                     m_wordTimer.setInterval(newTimeout / 4);
                 });
-            QObject::connect(element.timer.data(), &QTimer::timeout, [this, writeToSocket]() {
+            QObject::connect(element.timer.data(), &QTimer::timeout, q, [this, writeToSocket]() {
                 QueueElement elem = m_element;
                 if (elem.reply.isNull())
                     return;
@@ -242,26 +234,19 @@ public:
         return reply;
     }
 
-    // TODO: Review once we have a transport layer in place.
-    bool isOpen() const override
+      void cleanupQueue()
     {
-        if (m_socket)
-            return m_socket->isOpen();
-        return false;
-    }
+    //    if (!m_element.timer.isNull())
+    //        m_element.timer->stop();
+    //    m_wordTimer.stop();
+    //    m_responseBuffer.clear();
+    //    qCDebug(QT_MODBUS) << "(TCP/RTU client) Cleanup of pending requests";
 
-    void cleanupQueue()
-    {
-        m_element.timer->stop();
-        m_wordTimer.stop();
-        m_responseBuffer.clear();
-        qCDebug(QT_MODBUS) << "(TCP/RTU client) Cleanup of pending requests";
-
-        if (!m_element.reply.isNull()) {
-            m_element.reply->setError(
-                    QModbusDevice::ReplyAbortedError,
-                    QModbusClient::tr("Reply aborted due to connection closure."));
-        }
+    //    if (!m_element.reply.isNull()) {
+    //        m_element.reply->setError(
+    //                QModbusDevice::ReplyAbortedError,
+    //                QModbusClient::tr("Reply aborted due to connection closure."));
+    //    }
     }
 
     QTimer       m_wordTimer;

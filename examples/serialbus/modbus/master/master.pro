@@ -5,7 +5,7 @@ qtConfig(modbus-serialport): QT += serialport
 
 TARGET = modbusmaster
 TEMPLATE = app
-CONFIG += c++11
+CONFIG += c++11 console
 
 SOURCES += \
     main.cpp\

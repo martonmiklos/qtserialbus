@@ -52,6 +52,9 @@ public:
     explicit QModbusTcpClient(QObject *parent = nullptr);
     ~QModbusTcpClient();
 
+    bool isRtuEncapsulationEnabled() const;
+    bool enableRtuEncapsulation(bool value);
+
 protected:
     QModbusTcpClient(QModbusTcpClientPrivate &dd, QObject *parent = nullptr);
 
