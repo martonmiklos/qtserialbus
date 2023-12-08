@@ -31,6 +31,8 @@ qt_internal_add_module(SerialBus
         qmodbusserver.cpp qmodbusserver.h qmodbusserver_p.h
         qmodbustcpclient.cpp qmodbustcpclient.h qmodbustcpclient_p.h
         qmodbustcpserver.cpp qmodbustcpserver.h qmodbustcpserver_p.h
+        qmodbusrtuserver.cpp qmodbusrtuserver.h qmodbusrtuserver_p.h
+        qmodbusrtutcpserver.cpp qmodbusrtutcpserver.h qmodbusrtutcpserver_p.h
         qtserialbusglobal.h
     LIBRARIES
         Qt::CorePrivate
