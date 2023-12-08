@@ -72,8 +72,14 @@ qtConfig(modbus-serialport) {
         qmodbusrtuserialmaster.cpp \
         qmodbusrtuserialslave.cpp
 }
-HEADERS += $$PUBLIC_HEADERS $$PRIVATE_HEADERS
-SOURCES += $$PUBLIC_SOURCES $$PRIVATE_SOURCES
+HEADERS += $$PUBLIC_HEADERS $$PRIVATE_HEADERS \
+    qmodbusrtumaster.h \
+    qmodbusrtumaster_p.h \
+    qmodbusrtutcpmaster.h \
+    qmodbusrtutcpmaster_p.h
+SOURCES += $$PUBLIC_SOURCES $$PRIVATE_SOURCES \
+    qmodbusrtumaster.cpp \
+    qmodbusrtutcpmaster.cpp
 
 MODULE_PLUGIN_TYPES = \
     canbus

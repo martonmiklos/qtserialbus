@@ -34,8 +34,8 @@
 **
 ****************************************************************************/
 
-#include "qmodbusrtuserialmaster.h"
-#include "qmodbusrtuserialmaster_p.h"
+#include "qmodbusrtutcpmaster.h"
+#include "qmodbusrtutcpmaster_p.h"
 
 #include <QtCore/qloggingcategory.h>
 
@@ -45,11 +45,11 @@ Q_DECLARE_LOGGING_CATEGORY(QT_MODBUS)
 Q_DECLARE_LOGGING_CATEGORY(QT_MODBUS_LOW)
 
 /*!
-    \class QModbusRtuSerialMaster
+    \class QModbusRtuTcpMaster
     \inmodule QtSerialBus
     \since 5.8
 
-    \brief The QModbusRtuSerialMaster class represents a Modbus client
+    \brief The QModbusRtuTcpMaster class represents a Modbus client
     that uses a serial bus for its communication with the Modbus server.
 
     Communication via Modbus requires the interaction between a single
@@ -60,17 +60,17 @@ Q_DECLARE_LOGGING_CATEGORY(QT_MODBUS_LOW)
 /*!
     Constructs a serial Modbus master with the specified \a parent.
 */
-QModbusRtuSerialMaster::QModbusRtuSerialMaster(QObject *parent)
-    : QModbusRtuMaster(new QModbusRtuSerialMasterPrivate, parent)
+QModbusRtuTcpMaster::QModbusRtuTcpMaster(QObject *parent)
+    : QModbusRtuMaster(new QModbusRtuTcpMasterPrivate, parent)
 {
-    Q_D(QModbusRtuSerialMaster);
+    Q_D(QModbusRtuTcpMaster);
     d->setupDevice();
 }
 
 /*!
     \internal
 */
-QModbusRtuSerialMaster::~QModbusRtuSerialMaster()
+QModbusRtuTcpMaster::~QModbusRtuTcpMaster()
 {
     close();
 }
@@ -78,10 +78,10 @@ QModbusRtuSerialMaster::~QModbusRtuSerialMaster()
 /*!
     \internal
 */
-QModbusRtuSerialMaster::QModbusRtuSerialMaster(QModbusRtuSerialMasterPrivate &dd, QObject *parent)
+QModbusRtuTcpMaster::QModbusRtuTcpMaster(QModbusRtuTcpMasterPrivate &dd, QObject *parent)
     : QModbusRtuMaster(dd, parent)
 {
-    Q_D(QModbusRtuSerialMaster);
+    Q_D(QModbusRtuTcpMaster);
     d->setupDevice();
 }
 
@@ -91,41 +91,51 @@ QModbusRtuSerialMaster::QModbusRtuSerialMaster(QModbusRtuSerialMasterPrivate &dd
      \note When calling this function, existing buffered data is removed from
      the serial port.
 */
-bool QModbusRtuSerialMaster::open()
+bool QModbusRtuTcpMaster::open()
 {
     if (state() == QModbusDevice::ConnectedState)
         return true;
 
-    Q_D(QModbusRtuSerialMaster);
+    Q_D(QModbusRtuTcpMaster);
     d->setupEnvironment(); // to be done before open
-    if (d->m_serialPort->open(QIODevice::ReadWrite)) {
-        setState(QModbusDevice::ConnectedState);
-        d->m_serialPort->clear(); // only possible after open
+    if (d->m_socket->open(QIODevice::ReadWrite)) {
+        setState(QModbusDevice::ConnectingState);
+        const QUrl url = QUrl::fromUserInput(d->m_networkAddress + QStringLiteral(":")
+                                             + QString::number(d->m_networkPort));
+
+        if (!url.isValid()) {
+            setError(tr("Invalid connection settings for TCP communication specified."),
+                     QModbusDevice::ConnectionError);
+            qCWarning(QT_MODBUS) << "(TCP/RTU client) Invalid host:" << url.host() << "or port:"
+                                 << url.port();
+            return false;
+        }
+
+        d->m_socket->connectToHost(url.host(), url.port());
+        //d->m_socket->clear(); // only possible after open
     } else {
-        setError(d->m_serialPort->errorString(), QModbusDevice::ConnectionError);
+        setError(d->m_socket->errorString(), QModbusDevice::ConnectionError);
     }
-    return (state() == QModbusDevice::ConnectedState);
+    return (state() == QModbusDevice::ConnectingState);
 }
 
 /*!
      \reimp
 */
-void QModbusRtuSerialMaster::close()
+void QModbusRtuTcpMaster::close()
 {
     if (state() == QModbusDevice::UnconnectedState)
         return;
 
     setState(QModbusDevice::ClosingState);
 
-    Q_D(QModbusRtuSerialMaster);
-
-    if (d->m_serialPort->isOpen())
-        d->m_serialPort->close();
+    Q_D(QModbusRtuTcpMaster);
+    d->m_socket->disconnectFromHost();
 
     int numberOfAborts = 0;
     while (!d->m_queue.isEmpty()) {
         // Finish each open reply and forget them
-        QModbusRtuSerialMasterPrivate::QueueElement elem = d->m_queue.dequeue();
+        QModbusRtuTcpMasterPrivate::QueueElement elem = d->m_queue.dequeue();
         if (!elem.reply.isNull()) {
             elem.reply->setError(QModbusDevice::ReplyAbortedError,
                                  QModbusClient::tr("Reply aborted due to connection closure."));

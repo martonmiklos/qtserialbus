@@ -34,32 +34,30 @@
 **
 ****************************************************************************/
 
-#ifndef QMODBUSRTUSERIALMASTER_H
-#define QMODBUSRTUSERIALMASTER_H
+#pragma once
 
-#include "qmodbusrtumaster.h"
 #include <QtSerialBus/qmodbusclient.h>
 
 QT_BEGIN_NAMESPACE
 
-class QModbusRtuSerialMasterPrivate;
+class QModbusRtuMasterPrivate;
 
-class Q_SERIALBUS_EXPORT QModbusRtuSerialMaster : public QModbusRtuMaster
+class Q_SERIALBUS_EXPORT QModbusRtuMaster : public QModbusClient
 {
     Q_OBJECT
-    Q_DECLARE_PRIVATE(QModbusRtuSerialMaster)
-
+    Q_DECLARE_PRIVATE(QModbusRtuMaster)
 public:
-    explicit QModbusRtuSerialMaster(QObject *parent = nullptr);
-    ~QModbusRtuSerialMaster();
+    explicit QModbusRtuMaster(QModbusClientPrivate *p, QObject *parent = nullptr);
+    ~QModbusRtuMaster();
+
+    int interFrameDelay() const;
+    void setInterFrameDelay(int microseconds);
+
+    int turnaroundDelay() const;
+    void setTurnaroundDelay(int turnaroundDelay);
 
 protected:
-    QModbusRtuSerialMaster(QModbusRtuSerialMasterPrivate &dd, QObject *parent = nullptr);
-
-    void close() override;
-    bool open() override;
+    QModbusRtuMaster(QModbusRtuMasterPrivate &dd, QObject *parent = nullptr);
 };
 
 QT_END_NAMESPACE
-
-#endif // QMODBUSRTUSERIALMASTER_H
